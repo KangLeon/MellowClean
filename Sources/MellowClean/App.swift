@@ -110,8 +110,14 @@ final class Model: ObservableObject {
 struct Dashboard: View {
     @StateObject private var model = Model()
     @EnvironmentObject private var preferences: Preferences
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var navigation
     private let green = Color(red: 0.17, green: 0.39, blue: 0.30)
     private let paper = Color(red: 0.97, green: 0.96, blue: 0.93)
+    private var motion: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.24) }
+    private var entrance: AnyTransition {
+        reduceMotion ? .identity : .opacity.combined(with: .offset(y: 8))
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -127,7 +133,7 @@ struct Dashboard: View {
                 VStack(spacing: 8) {
                     nav("caches", preferences.text("缓存清理", "Cache cleanup"), "sparkles")
                     nav("large", preferences.text("大文件", "Large files"), "doc.text.magnifyingglass")
-                }
+                }.animation(motion, value: model.page)
                 Spacer()
                 VStack(alignment: .leading, spacing: 9) {
                     Label(preferences.text("本地处理 · 无追踪", "Local. No tracking."), systemImage: "lock.shield")
@@ -135,7 +141,7 @@ struct Dashboard: View {
                         .font(.caption).foregroundStyle(.secondary).lineSpacing(5)
                 }.font(.caption).padding(14).background(.white.opacity(0.65)).cornerRadius(12)
                 SettingsButton().buttonStyle(.plain)
-                Text(preferences.text("开源 · v0.2.0", "Open source · v0.2.0")).font(.caption2).foregroundStyle(.secondary)
+                Text(preferences.text("开源 · v0.2.1", "Open source · v0.2.1")).font(.caption2).foregroundStyle(.secondary)
             }.padding(24).frame(width: 225).background(Color(red: 0.91, green: 0.93, blue: 0.88))
             VStack(alignment: .leading, spacing: 22) {
                 HStack {
@@ -149,11 +155,23 @@ struct Dashboard: View {
                     if model.busy { ProgressView().controlSize(.small) }
                 }.padding(.top, 20)
                 diskCard
-                if model.page == "caches" { cacheContent } else { largeContent }
+                Group {
+                    if model.page == "caches" { cacheContent } else { largeContent }
+                }
+                .id(model.page)
+                .transition(entrance)
+                .animation(motion, value: model.scanned)
+                .animation(motion, value: model.scan.candidates.map(\.id))
+                .animation(motion, value: model.large.map(\.id))
                 Spacer(minLength: 0)
-                Text(preferences.text(model.status)).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                if model.page == "caches" { footer }
+                ZStack(alignment: .leading) {
+                    Text(preferences.text(model.status)).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                        .id(model.status.chinese).transition(reduceMotion ? .identity : .opacity)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                    .animation(motion, value: model.status.chinese)
+                if model.page == "caches" { footer.transition(entrance) }
             }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity).background(paper)
+                .animation(motion, value: model.page)
         }
         .environment(\.locale, Locale(identifier: preferences.language.resolved().rawValue))
         .preferredColorScheme(.light)
@@ -182,8 +200,17 @@ struct Dashboard: View {
         Button { model.page = id } label: {
             Label(title, systemImage: icon).font(.system(size: 14, weight: .medium))
                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                .background(model.page == id ? Color.white.opacity(0.85) : .clear).cornerRadius(10)
-        }.buttonStyle(.plain)
+                .background {
+                    if model.page == id {
+                        if reduceMotion {
+                            RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.85))
+                        } else {
+                            RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.85))
+                                .matchedGeometryEffect(id: "navigation", in: navigation)
+                        }
+                    }
+                }
+        }.buttonStyle(MellowButtonStyle())
     }
 
     private var diskCard: some View {
@@ -192,6 +219,13 @@ struct Dashboard: View {
                 Circle().stroke(green.opacity(0.12), lineWidth: 9)
                 Circle().trim(from: 0, to: CGFloat(max(0, min(1, Double(model.total - model.free) / Double(max(model.total, 1))))))
                     .stroke(green, style: StrokeStyle(lineWidth: 9, lineCap: .round)).rotationEffect(.degrees(-90))
+                    .animation(motion, value: model.free)
+                Circle().trim(from: 0, to: 0.2)
+                    .stroke(green.opacity(0.55), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .padding(-9)
+                    .rotationEffect(.degrees(model.busy && !reduceMotion ? 360 : 0))
+                    .animation(model.busy && !reduceMotion ? .linear(duration: 1.3).repeatForever(autoreverses: false) : nil, value: model.busy && !reduceMotion)
+                    .opacity(model.busy ? 1 : 0).accessibilityHidden(true)
                 Image(systemName: "internaldrive").font(.title2).foregroundStyle(green)
             }.frame(width: 70, height: 70).accessibilityLabel(preferences.text("磁盘剩余 \(formattedBytes(model.free))", "Disk space available: \(formattedBytes(model.free))"))
             VStack(alignment: .leading, spacing: 5) {
@@ -217,7 +251,7 @@ struct Dashboard: View {
                     Text(preferences.text("保留 30 天", "Keep 30 days")).tag(30)
                 }.labelsHidden().frame(width: 140).disabled(model.busy)
                 Button(model.scanned ? preferences.text("重新扫描", "Scan again") : preferences.text("开始扫描", "Start scan")) { model.refresh() }
-                    .buttonStyle(.borderedProminent).disabled(model.busy)
+                    .buttonStyle(MellowButtonStyle(prominent: true)).disabled(model.busy)
             }
             ScrollView {
                 VStack(spacing: 10) {
@@ -227,7 +261,7 @@ struct Dashboard: View {
                             Text(model.scanned ? preferences.text("没有需要处理的旧缓存", "No old caches to clean") : preferences.text("先扫描，不会改动任何文件", "Scan first. Nothing is changed.")).font(.headline)
                             Text(model.scanned ? preferences.text("近期内容与正在使用的缓存已保留。\n想继续腾空间？试试左侧的大文件检查。", "Recent and active caches are kept.\nNeed more room? Try Large files in the sidebar.") : preferences.text("检查开发工具、浏览器缓存和旧诊断报告。\n近期更新或正在使用的内容会保留。", "Review developer caches, browser caches and old crash reports.\nRecent and active content is kept."))
                                 .multilineTextAlignment(.center).foregroundStyle(.secondary)
-                        }.frame(maxWidth: .infinity).padding(.vertical, 42)
+                        }.frame(maxWidth: .infinity).padding(.vertical, 42).transition(entrance)
                     }
                     ForEach(Category.all) { category in
                         let items = model.scan.candidates.filter { $0.categoryID == category.id }
@@ -253,7 +287,12 @@ struct Dashboard: View {
                                         }.font(.caption).help(item.path)
                                     }
                                 }.font(.caption)
-                            }.padding(16).background(.white).cornerRadius(12)
+                            }.padding(16)
+                                .background(model.selected.contains(category.id) ? green.opacity(0.08) : .white)
+                                .cornerRadius(12)
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(green.opacity(model.selected.contains(category.id) ? 0.35 : 0), lineWidth: 1))
+                                .animation(motion, value: model.selected.contains(category.id))
+                                .transition(entrance)
                         }
                     }
                     if !model.scan.notes.isEmpty {
@@ -275,7 +314,7 @@ struct Dashboard: View {
             }
             Spacer()
             Button((model.permanent ? preferences.text("清理", "Clean") : preferences.text("移至废纸篓", "Move to Trash")) + " · " + formattedBytes(model.chosenBytes)) { model.confirm = true }
-                .buttonStyle(.borderedProminent).controlSize(.large).disabled(model.chosen.isEmpty || model.busy)
+                .buttonStyle(MellowButtonStyle(prominent: true)).controlSize(.large).disabled(model.chosen.isEmpty || model.busy)
         }
     }
 
@@ -284,7 +323,7 @@ struct Dashboard: View {
             HStack {
                 Text(preferences.text("个人文件夹 · 大于 100 MB · 最多 100 项", "Personal folders · Over 100 MB · Up to 100 files")).font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button(preferences.text("查找大文件", "Find large files")) { model.scanLarge() }.buttonStyle(.borderedProminent).disabled(model.busy)
+                Button(preferences.text("查找大文件", "Find large files")) { model.scanLarge() }.buttonStyle(MellowButtonStyle(prominent: true)).disabled(model.busy)
             }
             ScrollView {
                 VStack(spacing: 10) {
@@ -303,7 +342,7 @@ struct Dashboard: View {
                             Spacer()
                             Text(formattedBytes(file.bytes)).font(.caption)
                             Button(preferences.text("在 Finder 查看", "Show in Finder")) { reveal(file.url) }
-                        }.padding(14).background(.white).cornerRadius(12)
+                        }.padding(14).background(.white).cornerRadius(12).transition(entrance)
                     }
                     ForEach(Array(model.largeNotes.enumerated()), id: \.offset) { _, note in Text(preferences.text(note)).font(.caption).foregroundStyle(.secondary) }
                 }
@@ -311,4 +350,23 @@ struct Dashboard: View {
         }
     }
     private func reveal(_ url: URL) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+}
+
+// One native button style keeps press feedback consistent without timers or gesture handlers.
+private struct MellowButtonStyle: ButtonStyle {
+    var prominent = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, prominent ? 14 : 0)
+            .padding(.vertical, prominent ? 9 : 0)
+            .foregroundStyle(prominent ? Color.white : Color.primary)
+            .background(prominent ? Color(red: 0.17, green: 0.39, blue: 0.30) : .clear)
+            .cornerRadius(9)
+            .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.4)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+    }
 }
