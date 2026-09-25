@@ -32,6 +32,7 @@ open dist/MellowClean.app
 - **先解释再选择**：每类展示用途、影响、大小、具体项目，支持在 Finder 查看。
 - **保留近期内容**：默认保留最近 7 天更新的项目，界面可选 1 / 7 / 30 天；切换后重新扫描生效。
 - **两种清理方式**：默认移至废纸篓；可明确选择永久删除并二次确认。
+- **卸载应用**：搜索 `/Applications` 与 `~/Applications` 顶层应用，查看路径，确认后将应用本体移至废纸篓。保留偏好设置、账号数据和文档；保护 Apple 应用、本工具、正在运行的应用及符号链接。含驱动或后台服务的软件请使用厂商卸载器；Homebrew 管理的软件建议用 `brew uninstall` 保持安装记录一致。
 - **大文件定位**：查找下载、桌面、文稿、影片中大于 100 MB 的文件，最多显示最大的 100 项。个人文件只提供 Finder 定位。
 - **轻量动效**：页面与卡片柔和过渡、扫描时的活动环、按钮按压反馈；自动遵循 macOS 的“减少动态效果”设置。
 
@@ -52,7 +53,7 @@ CLI 固定保留 7 天。无参数启动窗口。不会接受任意待删除路�
 
 ## 清理边界
 
-只清理当前用户下写在代码里的缓存路径，不请求 sudo，不清理系统目录、照片、聊天记录、密码、浏览器用户资料、Xcode Archives、模拟器、开发运行环境或项目依赖。
+缓存清理只处理当前用户下写在代码里的缓存路径，不请求 sudo，不清理系统目录、照片、聊天记录、密码、浏览器用户资料、Xcode Archives、模拟器、开发运行环境或项目依赖。
 
 每个候选项目都必须完整检查。符号链接、硬链接、近期变化、权限不足或过大而无法完整检查的目录会跳过；检测到相关工具在运行时也会跳过。执行前再次检查运行进程和文件元数据，扫描后变化的内容不会删除。清理失败逐项报告，不把失败计入成功数量。
 
@@ -69,7 +70,7 @@ dist/bin/mellowclean --version
 codesign --verify --deep --strict dist/MellowClean.app
 ```
 
-测试使用临时目录，覆盖允许路径、近期文件、运行中应用、符号链接、硬链接、扫描后变化、伪造候选和重复候选。CI 在 macOS 上测试并构建。安装脚本只做本机构建和 ad-hoc 签名，不代表 Apple Developer ID 签名或公证。
+测试使用临时目录与假应用包，覆盖卸载保护、运行中应用、身份变化、移至废纸篓和应用外数据保留，以及缓存允许路径、近期文件、运行中应用、符号链接、硬链接、扫描后变化、伪造候选和重复候选。CI 在 macOS 上测试并构建。安装脚本只做本机构建和 ad-hoc 签名，不代表 Apple Developer ID 签名或公证。
 
 图标源文件为 `Resources/AppIcon.png`；运行 `bash scripts/icon.sh` 可重新生成包含标准与 Retina 尺寸的 `AppIcon.icns`。构建时自动嵌入应用，CI 会检查图标包能否解码。
 
@@ -77,4 +78,4 @@ Homebrew 配方在 [KangLeon/homebrew-tap](https://github.com/KangLeon/homebrew-
 
 ## English
 
-MellowClean is a small, local-first Mac cleaner with a native UI and a CLI. Choose English, Simplified Chinese or System default in Settings (`⌘,`). Changes apply immediately and persist across launches. It reviews an explicit cache allowlist, protects recent content, skips known running tools and defaults to Trash. Large personal files are discoverable but never automatically deleted. No telemetry, privileged helper or external dependencies. Requires macOS 13+ and Swift 5.9+ build tools. See the commands above for installation and testing.
+MellowClean is a small, local-first Mac cleaner with a native UI and a CLI. Choose English, Simplified Chinese or System default in Settings (`⌘,`). Changes apply immediately and persist across launches. It reviews an explicit cache allowlist, protects recent content, skips known running tools and defaults to Trash. Large personal files are discoverable but never automatically deleted. The Uninstall apps page searches top-level apps in /Applications and ~/Applications, confirms before moving a bundle to Trash, and keeps app data. Protected, running and linked apps are skipped; use vendor uninstallers for drivers and services. No telemetry, privileged helper or external dependencies. Requires macOS 13+ and Swift 5.9+ build tools. See the commands above for installation and testing.

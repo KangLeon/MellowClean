@@ -132,11 +132,12 @@ struct Dashboard: View {
                 VStack(spacing: 8) {
                     nav("caches", preferences.text("缓存清理", "Cache cleanup"), "sparkles")
                     nav("large", preferences.text("大文件", "Large files"), "doc.text.magnifyingglass")
+                    nav("apps", preferences.text("卸载应用", "Uninstall apps"), "square.stack.3d.up")
                 }
                 .background(alignment: .top) {
                     RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.85))
                         .frame(height: 44)
-                        .offset(y: model.page == "large" ? 52 : 0)
+                        .offset(y: model.page == "apps" ? 104 : model.page == "large" ? 52 : 0)
                         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.page)
                         .allowsHitTesting(false)
                 }
@@ -147,21 +148,21 @@ struct Dashboard: View {
                         .font(.caption).foregroundStyle(.secondary).lineSpacing(5)
                 }.font(.caption).padding(14).background(.white.opacity(0.65)).cornerRadius(12)
                 SettingsButton().buttonStyle(.plain)
-                Text(preferences.text("开源 · v0.2.2", "Open source · v0.2.2")).font(.caption2).foregroundStyle(.secondary)
+                Text(preferences.text("开源 · v0.3.0", "Open source · v0.3.0")).font(.caption2).foregroundStyle(.secondary)
             }.padding(24).frame(width: 225).background(Color(red: 0.91, green: 0.93, blue: 0.88))
             VStack(alignment: .leading, spacing: 22) {
                 HStack {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(model.page == "caches" ? preferences.text("少一点杂物，多一点空间。", "Less clutter. More room.") : preferences.text("空间都去哪儿了？", "Where did the space go?"))
+                        Text(model.page == "apps" ? preferences.text("告别不再需要的应用。", "Let unused apps go.") : model.page == "caches" ? preferences.text("少一点杂物，多一点空间。", "Less clutter. More room.") : preferences.text("空间都去哪儿了？", "Where did the space go?"))
                             .font(.system(size: 27, weight: .semibold, design: .rounded))
-                        Text(model.page == "caches" ? preferences.text("只清理你看得懂、选得中的内容。", "Understand what goes. Choose what stays.") : preferences.text("先看清楚，再决定。个人文件不会自动删除。", "Review first. Personal files are never deleted automatically."))
+                        Text(model.page == "apps" ? preferences.text("确认后移至废纸篓，保留你的应用数据。", "Confirm to move apps to Trash. Your app data stays.") : model.page == "caches" ? preferences.text("只清理你看得懂、选得中的内容。", "Understand what goes. Choose what stays.") : preferences.text("先看清楚，再决定。个人文件不会自动删除。", "Review first. Personal files are never deleted automatically."))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     if model.busy { ProgressView().controlSize(.small) }
                 }.padding(.top, 20)
                 diskCard
-                // Keep both pages mounted so switching does not reset scroll/disclosure state.
+                // Keep pages mounted so switching does not reset scroll/disclosure state.
                 ZStack(alignment: .topLeading) {
                     cacheContent
                         .opacity(model.page == "caches" ? 1 : 0)
@@ -173,6 +174,11 @@ struct Dashboard: View {
                         .disabled(model.page != "large")
                         .allowsHitTesting(model.page == "large")
                         .accessibilityHidden(model.page != "large")
+                    ApplicationsView(active: model.page == "apps")
+                        .opacity(model.page == "apps" ? 1 : 0)
+                        .disabled(model.page != "apps")
+                        .allowsHitTesting(model.page == "apps")
+                        .accessibilityHidden(model.page != "apps")
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: model.page)
@@ -185,6 +191,8 @@ struct Dashboard: View {
                         .id(model.status.chinese).transition(reduceMotion ? .identity : .opacity)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                     .animation(motion, value: model.status.chinese)
+                    .opacity(model.page == "apps" ? 0 : 1)
+                    .accessibilityHidden(model.page == "apps")
                 footer
                     .opacity(model.page == "caches" ? 1 : 0)
                     .disabled(model.page != "caches")
@@ -245,8 +253,8 @@ struct Dashboard: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 5) {
-                Text(formattedBytes(model.scan.bytes)).font(.title2).fontWeight(.semibold).foregroundStyle(green)
-                Text(preferences.text("符合条件的缓存 · 估算", "Eligible caches · estimated")).font(.caption).foregroundStyle(.secondary)
+                Text(model.page == "apps" ? preferences.text("可恢复移除", "Restorable removal") : formattedBytes(model.scan.bytes)).font(.title2).fontWeight(.semibold).foregroundStyle(green)
+                Text(model.page == "apps" ? preferences.text("仅移动应用本体", "Application bundle only") : preferences.text("符合条件的缓存 · 估算", "Eligible caches · estimated")).font(.caption).foregroundStyle(.secondary)
             }
         }.padding(24).background(.white).cornerRadius(18)
     }
