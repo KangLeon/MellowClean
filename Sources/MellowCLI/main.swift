@@ -2,7 +2,7 @@ import Foundation
 import MellowCore
 
 let usage = """
-MellowClean 0.1.2 — a calmer Mac, one informed choice at a time.
+MellowClean 0.1.3 — a calmer Mac, one informed choice at a time.
 
   mellowclean                  Open the native app
   mellowclean scan [--json]     Inspect known caches (read-only)
@@ -31,7 +31,7 @@ do {
         try p.run(); p.waitUntilExit()
         exit(p.terminationStatus)
     }
-    if args == ["--version"] { print("0.1.2"); exit(0) }
+    if args == ["--version"] { print("0.1.3"); exit(0) }
     if args == ["--help"] || args == ["help"] { print(usage); exit(0) }
     let cleaner = Cleaner()
     let command = args[0]

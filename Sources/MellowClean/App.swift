@@ -102,7 +102,8 @@ struct Dashboard: View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 28) {
                 HStack(spacing: 10) {
-                    Image(systemName: "leaf.fill").font(.system(size: 26)).foregroundStyle(green)
+                    Image(nsImage: NSImage(named: NSImage.applicationIconName) ?? NSImage())
+                        .resizable().frame(width: 38, height: 38).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("MellowClean").font(.headline)
                         Text("给 Mac 留点余地").font(.caption).foregroundStyle(.secondary)
@@ -118,7 +119,7 @@ struct Dashboard: View {
                     Text("不需要管理员权限\n不自动删除个人文件")
                         .font(.caption).foregroundStyle(.secondary).lineSpacing(5)
                 }.font(.caption).padding(14).background(.white.opacity(0.65)).cornerRadius(12)
-                Text("开源 · v0.1.2").font(.caption2).foregroundStyle(.secondary)
+                Text("开源 · v0.1.3").font(.caption2).foregroundStyle(.secondary)
             }.padding(24).frame(width: 210).background(Color(red: 0.91, green: 0.93, blue: 0.88))
             VStack(alignment: .leading, spacing: 22) {
                 HStack {

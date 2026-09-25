@@ -1,5 +1,7 @@
 # MellowClean
 
+<img src="Resources/AppIcon.png" width="128" alt="MellowClean app icon">
+
 **给 Mac 留点余地。** 一个轻量、透明的 macOS 清理工具，带原生 SwiftUI 窗口和命令行。
 
 扫描 → 看懂每一项 → 自己选择 → 清理。没有后台常驻、账号、广告、遥测或第三方依赖。
@@ -67,6 +69,8 @@ codesign --verify --deep --strict dist/MellowClean.app
 ```
 
 测试使用临时目录，覆盖允许路径、近期文件、运行中应用、符号链接、硬链接、扫描后变化、伪造候选和重复候选。CI 在 macOS 上测试并构建。安装脚本只做本机构建和 ad-hoc 签名，不代表 Apple Developer ID 签名或公证。
+
+图标源文件为 `Resources/AppIcon.png`；运行 `bash scripts/icon.sh` 可重新生成包含标准与 Retina 尺寸的 `AppIcon.icns`。构建时自动嵌入应用，CI 会检查图标包能否解码。
 
 Homebrew 配方在 [KangLeon/homebrew-tap](https://github.com/KangLeon/homebrew-tap)，使用版本归档和 SHA-256 校验。发布新版本时，更新 `Info.plist`、CLI 版本、标签和配方校验值。
 

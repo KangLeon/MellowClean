@@ -11,3 +11,4 @@ jobs:
       - run: bash scripts/build.sh
       - run: dist/bin/mellowclean --version
       - run: codesign --verify --deep --strict dist/MellowClean.app
+      - run: iconutil -c iconset dist/MellowClean.app/Contents/Resources/AppIcon.icns -o /tmp/AppIcon.iconset
