@@ -111,7 +111,6 @@ struct Dashboard: View {
     @StateObject private var model = Model()
     @EnvironmentObject private var preferences: Preferences
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Namespace private var navigation
     private let green = Color(red: 0.17, green: 0.39, blue: 0.30)
     private let paper = Color(red: 0.97, green: 0.96, blue: 0.93)
     private var motion: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.24) }
@@ -133,7 +132,14 @@ struct Dashboard: View {
                 VStack(spacing: 8) {
                     nav("caches", preferences.text("缓存清理", "Cache cleanup"), "sparkles")
                     nav("large", preferences.text("大文件", "Large files"), "doc.text.magnifyingglass")
-                }.animation(motion, value: model.page)
+                }
+                .background(alignment: .top) {
+                    RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.85))
+                        .frame(height: 44)
+                        .offset(y: model.page == "large" ? 52 : 0)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: model.page)
+                        .allowsHitTesting(false)
+                }
                 Spacer()
                 VStack(alignment: .leading, spacing: 9) {
                     Label(preferences.text("本地处理 · 无追踪", "Local. No tracking."), systemImage: "lock.shield")
@@ -141,7 +147,7 @@ struct Dashboard: View {
                         .font(.caption).foregroundStyle(.secondary).lineSpacing(5)
                 }.font(.caption).padding(14).background(.white.opacity(0.65)).cornerRadius(12)
                 SettingsButton().buttonStyle(.plain)
-                Text(preferences.text("开源 · v0.2.1", "Open source · v0.2.1")).font(.caption2).foregroundStyle(.secondary)
+                Text(preferences.text("开源 · v0.2.2", "Open source · v0.2.2")).font(.caption2).foregroundStyle(.secondary)
             }.padding(24).frame(width: 225).background(Color(red: 0.91, green: 0.93, blue: 0.88))
             VStack(alignment: .leading, spacing: 22) {
                 HStack {
@@ -155,11 +161,21 @@ struct Dashboard: View {
                     if model.busy { ProgressView().controlSize(.small) }
                 }.padding(.top, 20)
                 diskCard
-                Group {
-                    if model.page == "caches" { cacheContent } else { largeContent }
+                // Keep both pages mounted so switching does not reset scroll/disclosure state.
+                ZStack(alignment: .topLeading) {
+                    cacheContent
+                        .opacity(model.page == "caches" ? 1 : 0)
+                        .disabled(model.page != "caches")
+                        .allowsHitTesting(model.page == "caches")
+                        .accessibilityHidden(model.page != "caches")
+                    largeContent
+                        .opacity(model.page == "large" ? 1 : 0)
+                        .disabled(model.page != "large")
+                        .allowsHitTesting(model.page == "large")
+                        .accessibilityHidden(model.page != "large")
                 }
-                .id(model.page)
-                .transition(entrance)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: model.page)
                 .animation(motion, value: model.scanned)
                 .animation(motion, value: model.scan.candidates.map(\.id))
                 .animation(motion, value: model.large.map(\.id))
@@ -169,9 +185,12 @@ struct Dashboard: View {
                         .id(model.status.chinese).transition(reduceMotion ? .identity : .opacity)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                     .animation(motion, value: model.status.chinese)
-                if model.page == "caches" { footer.transition(entrance) }
+                footer
+                    .opacity(model.page == "caches" ? 1 : 0)
+                    .disabled(model.page != "caches")
+                    .allowsHitTesting(model.page == "caches")
+                    .accessibilityHidden(model.page != "caches")
             }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity).background(paper)
-                .animation(motion, value: model.page)
         }
         .environment(\.locale, Locale(identifier: preferences.language.resolved().rawValue))
         .preferredColorScheme(.light)
@@ -199,18 +218,10 @@ struct Dashboard: View {
     private func nav(_ id: String, _ title: String, _ icon: String) -> some View {
         Button { model.page = id } label: {
             Label(title, systemImage: icon).font(.system(size: 14, weight: .medium))
-                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                .background {
-                    if model.page == id {
-                        if reduceMotion {
-                            RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.85))
-                        } else {
-                            RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.85))
-                                .matchedGeometryEffect(id: "navigation", in: navigation)
-                        }
-                    }
-                }
-        }.buttonStyle(MellowButtonStyle())
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+        }.buttonStyle(.plain)
     }
 
     private var diskCard: some View {
