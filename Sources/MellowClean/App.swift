@@ -34,6 +34,8 @@ final class Model: ObservableObject {
     @Published var permanent = false
     @Published var largeNotes: [String] = []
     @Published var report: String?
+    @Published var page = "caches"
+    @Published var confirm = false
     private var scanDays = 7
 
     var chosen: [Candidate] { scan.candidates.filter { selected.contains($0.categoryID) } }
@@ -93,8 +95,6 @@ final class Model: ObservableObject {
 
 struct Dashboard: View {
     @StateObject private var model = Model()
-    @State private var page = "caches"
-    @State private var confirm = false
     private let green = Color(red: 0.17, green: 0.39, blue: 0.30)
     private let paper = Color(red: 0.97, green: 0.96, blue: 0.93)
 
@@ -118,29 +118,29 @@ struct Dashboard: View {
                     Text("不需要管理员权限\n不自动删除个人文件")
                         .font(.caption).foregroundStyle(.secondary).lineSpacing(5)
                 }.font(.caption).padding(14).background(.white.opacity(0.65)).cornerRadius(12)
-                Text("开源 · v0.1.1").font(.caption2).foregroundStyle(.secondary)
+                Text("开源 · v0.1.2").font(.caption2).foregroundStyle(.secondary)
             }.padding(24).frame(width: 210).background(Color(red: 0.91, green: 0.93, blue: 0.88))
             VStack(alignment: .leading, spacing: 22) {
                 HStack {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(page == "caches" ? "少一点杂物，多一点空间。" : "空间都去哪儿了？")
+                        Text(model.page == "caches" ? "少一点杂物，多一点空间。" : "空间都去哪儿了？")
                             .font(.system(size: 27, weight: .semibold, design: .rounded))
-                        Text(page == "caches" ? "只清理你看得懂、选得中的内容。" : "先看清楚，再决定。个人文件不会自动删除。")
+                        Text(model.page == "caches" ? "只清理你看得懂、选得中的内容。" : "先看清楚，再决定。个人文件不会自动删除。")
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     if model.busy { ProgressView().controlSize(.small) }
                 }.padding(.top, 20)
                 diskCard
-                if page == "caches" { cacheContent } else { largeContent }
+                if model.page == "caches" { cacheContent } else { largeContent }
                 Spacer(minLength: 0)
                 Text(model.status).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                if page == "caches" { footer }
+                if model.page == "caches" { footer }
             }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity).background(paper)
         }
         .preferredColorScheme(.light)
         .tint(green)
-        .alert(model.permanent ? "永久删除所选缓存？" : "将所选缓存移至废纸篓？", isPresented: $confirm) {
+        .alert(model.permanent ? "永久删除所选缓存？" : "将所选缓存移至废纸篓？", isPresented: $model.confirm) {
             Button("取消", role: .cancel) {}
             Button(model.permanent ? "永久删除" : "移至废纸篓", role: .destructive) { model.clean() }
         } message: {
@@ -161,10 +161,10 @@ struct Dashboard: View {
     }
 
     private func nav(_ id: String, _ title: String, _ icon: String) -> some View {
-        Button { page = id } label: {
+        Button { model.page = id } label: {
             Label(title, systemImage: icon).font(.system(size: 14, weight: .medium))
                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                .background(page == id ? Color.white.opacity(0.85) : .clear).cornerRadius(10)
+                .background(model.page == id ? Color.white.opacity(0.85) : .clear).cornerRadius(10)
         }.buttonStyle(.plain)
     }
 
@@ -256,7 +256,7 @@ struct Dashboard: View {
                     .font(.caption2).foregroundStyle(.secondary)
             }
             Spacer()
-            Button("\(model.permanent ? "清理" : "移至废纸篓") · \(formattedBytes(model.chosenBytes))") { confirm = true }
+            Button("\(model.permanent ? "清理" : "移至废纸篓") · \(formattedBytes(model.chosenBytes))") { model.confirm = true }
                 .buttonStyle(.borderedProminent).controlSize(.large).disabled(model.chosen.isEmpty || model.busy)
         }
     }
