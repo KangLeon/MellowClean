@@ -118,7 +118,7 @@ struct Dashboard: View {
                     Text("不需要管理员权限\n不自动删除个人文件")
                         .font(.caption).foregroundStyle(.secondary).lineSpacing(5)
                 }.font(.caption).padding(14).background(.white.opacity(0.65)).cornerRadius(12)
-                Text("开源 · v0.1.0").font(.caption2).foregroundStyle(.secondary)
+                Text("开源 · v0.1.1").font(.caption2).foregroundStyle(.secondary)
             }.padding(24).frame(width: 210).background(Color(red: 0.91, green: 0.93, blue: 0.88))
             VStack(alignment: .leading, spacing: 22) {
                 HStack {
