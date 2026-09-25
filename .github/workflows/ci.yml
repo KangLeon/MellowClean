@@ -1,0 +1,13 @@
+name: macOS checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+      - run: bash scripts/build.sh
+      - run: dist/bin/mellowclean --version
+      - run: codesign --verify --deep --strict dist/MellowClean.app
