@@ -24,7 +24,7 @@ bash scripts/build.sh
 open dist/MellowClean.app
 ```
 
-界面目前为简体中文；CLI 提供英文命令帮助与中文分类说明。MIT 开源。
+界面支持简体中文、English 和跟随系统。点击侧边栏的“设置”或按 `⌘,` 选择语言，立即生效并自动保存；已有扫描结果也会同步切换。系统语言不受支持时回退到英文。CLI 帮助为英文，分类与提示跟随系统语言。MIT 开源。
 
 ## 可以做什么
 
@@ -76,4 +76,4 @@ Homebrew 配方在 [KangLeon/homebrew-tap](https://github.com/KangLeon/homebrew-
 
 ## English
 
-MellowClean is a small, local-first Mac cleaner with a native Chinese-language UI and a CLI. It reviews an explicit cache allowlist, protects recent content, skips known running tools and defaults to Trash. Large personal files are discoverable but never automatically deleted. No telemetry, privileged helper or external dependencies. Requires macOS 13+ and Swift 5.9+ build tools. See the commands above for installation and testing.
+MellowClean is a small, local-first Mac cleaner with a native UI and a CLI. Choose English, Simplified Chinese or System default in Settings (`⌘,`). Changes apply immediately and persist across launches. It reviews an explicit cache allowlist, protects recent content, skips known running tools and defaults to Trash. Large personal files are discoverable but never automatically deleted. No telemetry, privileged helper or external dependencies. Requires macOS 13+ and Swift 5.9+ build tools. See the commands above for installation and testing.

@@ -5,10 +5,17 @@ import MellowCore
 @main
 struct MellowCleanApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @StateObject private var preferences = Preferences()
     var body: some Scene {
-        WindowGroup { Dashboard().frame(minWidth: 900, minHeight: 680) }
+        WindowGroup { Dashboard().environmentObject(preferences).frame(minWidth: 980, minHeight: 720) }
             .windowStyle(.hiddenTitleBar)
-            .commands { CommandGroup(replacing: .newItem) {} }
+            .commands {
+                CommandGroup(replacing: .newItem) {}
+                CommandGroup(replacing: .appSettings) {
+                    SettingsButton().environmentObject(preferences).keyboardShortcut(",", modifiers: .command)
+                }
+            }
+        Settings { SettingsView().environmentObject(preferences) }
     }
 }
 
@@ -27,13 +34,13 @@ final class Model: ObservableObject {
     @Published var selected = Set<String>()
     @Published var busy = false
     @Published var scanned = false
-    @Published var status = "从一次扫描开始。所有决定都由你来做。"
+    @Published var status = Message("从一次扫描开始。所有决定都由你来做。", "Start with a scan. Every choice stays yours.")
     @Published var free: Int64 = 0
     @Published var total: Int64 = 1
     @Published var days = 7
     @Published var permanent = false
-    @Published var largeNotes: [String] = []
-    @Published var report: String?
+    @Published var largeNotes: [Message] = []
+    @Published var report: [Message]?
     @Published var page = "caches"
     @Published var confirm = false
     private var scanDays = 7
@@ -50,7 +57,7 @@ final class Model: ObservableObject {
     }
     func refresh() {
         guard !busy else { return }
-        busy = true; status = "正在检查缓存与应用状态…"
+        busy = true; status = Message("正在检查缓存与应用状态…", "Checking caches and running applications…")
         let age = days
         Task {
             do {
@@ -58,36 +65,43 @@ final class Model: ObservableObject {
                     Cleaner(days: age).scan(processes: try Cleaner.runningProcesses())
                 }.value
                 scan = found; selected = []; scanned = true; scanDays = age
-                status = found.candidates.isEmpty ? "检查完成。暂时没有符合条件的旧缓存。" : "扫描完成。选择要处理的分类，可先在 Finder 查看。"
-            } catch { status = error.localizedDescription }
+                status = found.candidates.isEmpty ? Message("检查完成。暂时没有符合条件的旧缓存。", "Scan complete. No eligible old caches found.") : Message("扫描完成。选择要处理的分类，可先在 Finder 查看。", "Scan complete. Choose categories, or review them in Finder first.")
+            } catch { status = Message(error: error) }
             disk(); busy = false
         }
     }
     func scanLarge() {
         guard !busy else { return }
-        busy = true; status = "正在查找个人文件夹中大于 100 MB 的文件…"
+        busy = true; status = Message("正在查找个人文件夹中大于 100 MB 的文件…", "Finding files larger than 100 MB in your personal folders…")
         Task {
             let result = await Task.detached { findLargeFiles() }.value
             large = result.files; largeNotes = result.notes
-            status = "找到 \(large.count) 个大文件。仅供查看，由你判断是否需要保留。"
+            status = Message("找到 \(large.count) 个大文件。仅供查看，由你判断是否需要保留。", "Found \(large.count) large files. Review them and decide what to keep.")
             busy = false
         }
     }
     func clean() {
         guard !busy, !chosen.isEmpty else { return }
         let items = chosen, mode = permanent, age = scanDays
-        busy = true; status = "正在重新检查并处理所选缓存…"
+        busy = true; status = Message("正在重新检查并处理所选缓存…", "Rechecking and processing selected caches…")
         Task {
             do {
                 let result = try await Task.detached {
                     Cleaner(days: age).clean(items, permanently: mode, processes: try Cleaner.runningProcesses())
                 }.value
-                let summary = "已\(mode ? "永久删除" : "移至废纸篓") \(result.count) 项，估算 \(formattedBytes(result.bytes))。"
+                let summary = Message(
+                    "已\(mode ? "永久删除" : "移至废纸篓") \(result.count) 项，估算 \(formattedBytes(result.bytes))。",
+                    "\(mode ? "Permanently deleted" : "Moved to Trash"): \(result.count) items, approximately \(formattedBytes(result.bytes)).")
                 status = summary
-                report = summary + (mode ? "\n实际可用空间可能受 APFS 快照影响。" : "\n如需释放空间，请在 Finder 检查并清倒废纸篓；也可从废纸篓拖回原位置。")
-                    + (result.errors.isEmpty ? "" : "\n\n未处理的项目：\n" + result.errors.joined(separator: "\n"))
+                report = [summary, mode
+                    ? Message("实际可用空间可能受 APFS 快照影响。", "APFS snapshots may affect the space reclaimed.")
+                    : Message("如需释放空间，请在 Finder 检查并清倒废纸篓；也可从废纸篓拖回原位置。", "Review and empty Trash in Finder to reclaim space. To restore an item, drag it back to its original location.")]
+                if !result.errors.isEmpty {
+                    report?.append(Message("未处理的项目：", "Skipped items:"))
+                    report?.append(contentsOf: result.errors)
+                }
                 scan = Scan(); selected = []; scanned = false
-            } catch { status = error.localizedDescription }
+            } catch { status = Message(error: error) }
             disk(); busy = false
         }
     }
@@ -95,6 +109,7 @@ final class Model: ObservableObject {
 
 struct Dashboard: View {
     @StateObject private var model = Model()
+    @EnvironmentObject private var preferences: Preferences
     private let green = Color(red: 0.17, green: 0.39, blue: 0.30)
     private let paper = Color(red: 0.97, green: 0.96, blue: 0.93)
 
@@ -106,27 +121,28 @@ struct Dashboard: View {
                         .resizable().frame(width: 38, height: 38).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("MellowClean").font(.headline)
-                        Text("给 Mac 留点余地").font(.caption).foregroundStyle(.secondary)
+                        Text(preferences.text("给 Mac 留点余地", "Room to breathe.")).font(.caption).foregroundStyle(.secondary)
                     }
                 }.padding(.top, 24)
                 VStack(spacing: 8) {
-                    nav("caches", "缓存清理", "sparkles")
-                    nav("large", "大文件", "doc.text.magnifyingglass")
+                    nav("caches", preferences.text("缓存清理", "Cache cleanup"), "sparkles")
+                    nav("large", preferences.text("大文件", "Large files"), "doc.text.magnifyingglass")
                 }
                 Spacer()
                 VStack(alignment: .leading, spacing: 9) {
-                    Label("本地处理 · 无追踪", systemImage: "lock.shield")
-                    Text("不需要管理员权限\n不自动删除个人文件")
+                    Label(preferences.text("本地处理 · 无追踪", "Local. No tracking."), systemImage: "lock.shield")
+                    Text(preferences.text("不需要管理员权限\n不自动删除个人文件", "No administrator access.\nYour personal files stay yours."))
                         .font(.caption).foregroundStyle(.secondary).lineSpacing(5)
                 }.font(.caption).padding(14).background(.white.opacity(0.65)).cornerRadius(12)
-                Text("开源 · v0.1.3").font(.caption2).foregroundStyle(.secondary)
-            }.padding(24).frame(width: 210).background(Color(red: 0.91, green: 0.93, blue: 0.88))
+                SettingsButton().buttonStyle(.plain)
+                Text(preferences.text("开源 · v0.2.0", "Open source · v0.2.0")).font(.caption2).foregroundStyle(.secondary)
+            }.padding(24).frame(width: 225).background(Color(red: 0.91, green: 0.93, blue: 0.88))
             VStack(alignment: .leading, spacing: 22) {
                 HStack {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(model.page == "caches" ? "少一点杂物，多一点空间。" : "空间都去哪儿了？")
+                        Text(model.page == "caches" ? preferences.text("少一点杂物，多一点空间。", "Less clutter. More room.") : preferences.text("空间都去哪儿了？", "Where did the space go?"))
                             .font(.system(size: 27, weight: .semibold, design: .rounded))
-                        Text(model.page == "caches" ? "只清理你看得懂、选得中的内容。" : "先看清楚，再决定。个人文件不会自动删除。")
+                        Text(model.page == "caches" ? preferences.text("只清理你看得懂、选得中的内容。", "Understand what goes. Choose what stays.") : preferences.text("先看清楚，再决定。个人文件不会自动删除。", "Review first. Personal files are never deleted automatically."))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -135,27 +151,28 @@ struct Dashboard: View {
                 diskCard
                 if model.page == "caches" { cacheContent } else { largeContent }
                 Spacer(minLength: 0)
-                Text(model.status).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                Text(preferences.text(model.status)).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 if model.page == "caches" { footer }
             }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity).background(paper)
         }
+        .environment(\.locale, Locale(identifier: preferences.language.resolved().rawValue))
         .preferredColorScheme(.light)
         .tint(green)
-        .alert(model.permanent ? "永久删除所选缓存？" : "将所选缓存移至废纸篓？", isPresented: $model.confirm) {
-            Button("取消", role: .cancel) {}
-            Button(model.permanent ? "永久删除" : "移至废纸篓", role: .destructive) { model.clean() }
+        .alert(model.permanent ? preferences.text("永久删除所选缓存？", "Permanently delete selected caches?") : preferences.text("将所选缓存移至废纸篓？", "Move selected caches to Trash?"), isPresented: $model.confirm) {
+            Button(preferences.text("取消", "Cancel"), role: .cancel) {}
+            Button(model.permanent ? preferences.text("永久删除", "Delete permanently") : preferences.text("移至废纸篓", "Move to Trash"), role: .destructive) { model.clean() }
         } message: {
-            Text("\(model.selected.count) 个分类，约 \(formattedBytes(model.chosenBytes))。\n" +
-                 (model.permanent ? "此操作无法撤销。下次使用时可能需要重新下载或编译。" : "可以从废纸篓找回。清倒废纸篓后才会释放磁盘空间。"))
+            Text(preferences.text("\(model.selected.count) 个分类，约 \(formattedBytes(model.chosenBytes))。\n", "\(model.selected.count) categories, approximately \(formattedBytes(model.chosenBytes)).\n") +
+                 (model.permanent ? preferences.text("此操作无法撤销。下次使用时可能需要重新下载或编译。", "This cannot be undone. Future use may require downloading or rebuilding files.") : preferences.text("可以从废纸篓找回。清倒废纸篓后才会释放磁盘空间。", "Files can be restored from Trash. Space is reclaimed only after emptying Trash.")))
         }
         .sheet(isPresented: Binding(get: { model.report != nil }, set: { if !$0 { model.report = nil } })) {
             VStack(alignment: .leading, spacing: 20) {
-                Label("处理结果", systemImage: "checkmark.circle").font(.title2)
-                ScrollView { Text(model.report ?? "").textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                Label(preferences.text("处理结果", "Cleanup results"), systemImage: "checkmark.circle").font(.title2)
+                ScrollView { Text((model.report ?? []).map { preferences.text($0) }.joined(separator: "\n\n")).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                 HStack {
-                    Button("打开废纸篓") { NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".Trash")) }
+                    Button(preferences.text("打开废纸篓", "Open Trash")) { NSWorkspace.shared.open(URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".Trash")) }
                     Spacer()
-                    Button("完成") { model.report = nil }.keyboardShortcut(.defaultAction)
+                    Button(preferences.text("完成", "Done")) { model.report = nil }.keyboardShortcut(.defaultAction)
                 }
             }.padding(28).frame(width: 510, height: 300)
         }
@@ -176,15 +193,15 @@ struct Dashboard: View {
                 Circle().trim(from: 0, to: CGFloat(max(0, min(1, Double(model.total - model.free) / Double(max(model.total, 1))))))
                     .stroke(green, style: StrokeStyle(lineWidth: 9, lineCap: .round)).rotationEffect(.degrees(-90))
                 Image(systemName: "internaldrive").font(.title2).foregroundStyle(green)
-            }.frame(width: 70, height: 70).accessibilityLabel("磁盘剩余 \(formattedBytes(model.free))")
+            }.frame(width: 70, height: 70).accessibilityLabel(preferences.text("磁盘剩余 \(formattedBytes(model.free))", "Disk space available: \(formattedBytes(model.free))"))
             VStack(alignment: .leading, spacing: 5) {
-                Text("\(formattedBytes(model.free)) 可用").font(.system(size: 25, weight: .medium, design: .rounded))
-                Text("磁盘总容量 \(formattedBytes(model.total))").font(.caption).foregroundStyle(.secondary)
+                Text(preferences.text("\(formattedBytes(model.free)) 可用", "\(formattedBytes(model.free)) available")).font(.system(size: 25, weight: .medium, design: .rounded))
+                Text(preferences.text("磁盘总容量 \(formattedBytes(model.total))", "Disk capacity: \(formattedBytes(model.total))")).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 5) {
                 Text(formattedBytes(model.scan.bytes)).font(.title2).fontWeight(.semibold).foregroundStyle(green)
-                Text("符合条件的缓存 · 估算").font(.caption).foregroundStyle(.secondary)
+                Text(preferences.text("符合条件的缓存 · 估算", "Eligible caches · estimated")).font(.caption).foregroundStyle(.secondary)
             }
         }.padding(24).background(.white).cornerRadius(18)
     }
@@ -192,14 +209,14 @@ struct Dashboard: View {
     private var cacheContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("可清理项目").font(.headline)
+                Text(preferences.text("可清理项目", "Cleanup candidates")).font(.headline)
                 Spacer()
-                Picker("保留近期内容", selection: $model.days) {
-                    Text("保留 1 天").tag(1)
-                    Text("保留 7 天").tag(7)
-                    Text("保留 30 天").tag(30)
-                }.frame(width: 185).disabled(model.busy)
-                Button(model.scanned ? "重新扫描" : "开始扫描") { model.refresh() }
+                Picker(preferences.text("保留近期内容", "Keep recent files"), selection: $model.days) {
+                    Text(preferences.text("保留 1 天", "Keep 1 day")).tag(1)
+                    Text(preferences.text("保留 7 天", "Keep 7 days")).tag(7)
+                    Text(preferences.text("保留 30 天", "Keep 30 days")).tag(30)
+                }.labelsHidden().frame(width: 140).disabled(model.busy)
+                Button(model.scanned ? preferences.text("重新扫描", "Scan again") : preferences.text("开始扫描", "Start scan")) { model.refresh() }
                     .buttonStyle(.borderedProminent).disabled(model.busy)
             }
             ScrollView {
@@ -207,8 +224,8 @@ struct Dashboard: View {
                     if !model.scanned || model.scan.candidates.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "sparkle.magnifyingglass").font(.system(size: 36)).foregroundStyle(green)
-                            Text(model.scanned ? "没有需要处理的旧缓存" : "先扫描，不会改动任何文件").font(.headline)
-                            Text(model.scanned ? "近期内容与正在使用的缓存已保留。\n想继续腾空间？试试左侧的大文件检查。" : "检查开发工具、浏览器缓存和旧诊断报告。\n近期更新或正在使用的内容会保留。")
+                            Text(model.scanned ? preferences.text("没有需要处理的旧缓存", "No old caches to clean") : preferences.text("先扫描，不会改动任何文件", "Scan first. Nothing is changed.")).font(.headline)
+                            Text(model.scanned ? preferences.text("近期内容与正在使用的缓存已保留。\n想继续腾空间？试试左侧的大文件检查。", "Recent and active caches are kept.\nNeed more room? Try Large files in the sidebar.") : preferences.text("检查开发工具、浏览器缓存和旧诊断报告。\n近期更新或正在使用的内容会保留。", "Review developer caches, browser caches and old crash reports.\nRecent and active content is kept."))
                                 .multilineTextAlignment(.center).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity).padding(.vertical, 42)
                     }
@@ -219,20 +236,20 @@ struct Dashboard: View {
                                 HStack {
                                     Toggle(isOn: Binding(get: { model.selected.contains(category.id) }, set: {
                                         if $0 { model.selected.insert(category.id) } else { model.selected.remove(category.id) }
-                                    })) { Text(category.title).fontWeight(.medium) }.toggleStyle(.checkbox).disabled(model.busy)
+                                    })) { Text(preferences.text(category.title)).fontWeight(.medium) }.toggleStyle(.checkbox).disabled(model.busy)
                                     Spacer()
                                     Text(formattedBytes(items.reduce(0) { $0 + $1.bytes })).fontWeight(.semibold).monospacedDigit()
                                     Button { reveal(URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(category.relativePath)) }
-                                        label: { Image(systemName: "folder") }.help("在 Finder 查看 \(category.title)")
+                                        label: { Image(systemName: "folder") }.help(preferences.text("在 Finder 查看 \(preferences.text(category.title))", "Show \(preferences.text(category.title)) in Finder"))
                                 }
-                                Text(category.detail).font(.caption).foregroundStyle(.secondary)
-                                DisclosureGroup("查看 \(items.count) 个项目") {
+                                Text(preferences.text(category.detail)).font(.caption).foregroundStyle(.secondary)
+                                DisclosureGroup(preferences.text("查看 \(items.count) 个项目", "Review \(items.count) items")) {
                                     ForEach(items) { item in
                                         HStack {
                                             Text(URL(fileURLWithPath: item.path).lastPathComponent).lineLimit(1).truncationMode(.middle)
                                             Spacer()
                                             Text(formattedBytes(item.bytes))
-                                            Button("查看") { reveal(URL(fileURLWithPath: item.path)) }
+                                            Button(preferences.text("查看", "Show")) { reveal(URL(fileURLWithPath: item.path)) }
                                         }.font(.caption).help(item.path)
                                     }
                                 }.font(.caption)
@@ -240,8 +257,8 @@ struct Dashboard: View {
                         }
                     }
                     if !model.scan.notes.isEmpty {
-                        DisclosureGroup("已保留或跳过的内容（\(model.scan.notes.count)）") {
-                            ForEach(model.scan.notes, id: \.self) { Text($0).font(.caption).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 3) }
+                        DisclosureGroup(preferences.text("已保留或跳过的内容（\(model.scan.notes.count)）", "Kept or skipped (\(model.scan.notes.count))")) {
+                            ForEach(Array(model.scan.notes.enumerated()), id: \.offset) { _, note in Text(preferences.text(note)).font(.caption).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 3) }
                         }.font(.caption).padding(12)
                     }
                 }
@@ -252,12 +269,12 @@ struct Dashboard: View {
     private var footer: some View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 5) {
-                Toggle("永久删除，立即释放空间", isOn: $model.permanent).font(.caption).disabled(model.busy)
-                Text(model.permanent ? "不可撤销；实际释放量受快照影响。" : "默认移至废纸篓，清倒后释放空间。")
+                Toggle(preferences.text("永久删除，立即释放空间", "Delete permanently to reclaim space"), isOn: $model.permanent).font(.caption).disabled(model.busy)
+                Text(model.permanent ? preferences.text("不可撤销；实际释放量受快照影响。", "Cannot be undone. Snapshots may affect space reclaimed.") : preferences.text("默认移至废纸篓，清倒后释放空间。", "Trash is the default. Empty it to reclaim space."))
                     .font(.caption2).foregroundStyle(.secondary)
             }
             Spacer()
-            Button("\(model.permanent ? "清理" : "移至废纸篓") · \(formattedBytes(model.chosenBytes))") { model.confirm = true }
+            Button((model.permanent ? preferences.text("清理", "Clean") : preferences.text("移至废纸篓", "Move to Trash")) + " · " + formattedBytes(model.chosenBytes)) { model.confirm = true }
                 .buttonStyle(.borderedProminent).controlSize(.large).disabled(model.chosen.isEmpty || model.busy)
         }
     }
@@ -265,14 +282,14 @@ struct Dashboard: View {
     private var largeContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("个人文件夹 · 大于 100 MB · 最多 100 项").font(.caption).foregroundStyle(.secondary)
+                Text(preferences.text("个人文件夹 · 大于 100 MB · 最多 100 项", "Personal folders · Over 100 MB · Up to 100 files")).font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("查找大文件") { model.scanLarge() }.buttonStyle(.borderedProminent).disabled(model.busy)
+                Button(preferences.text("查找大文件", "Find large files")) { model.scanLarge() }.buttonStyle(.borderedProminent).disabled(model.busy)
             }
             ScrollView {
                 VStack(spacing: 10) {
                     if model.large.isEmpty {
-                        Text("检查下载、桌面、文稿和影片。\n点击“在 Finder 查看”后，可自行决定如何处理。")
+                        Text(preferences.text("检查下载、桌面、文稿和影片。\n点击“在 Finder 查看”后，可自行决定如何处理。", "Check Downloads, Desktop, Documents and Movies.\nReveal a file in Finder to decide what to do with it."))
                             .foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(40)
                     }
                     ForEach(model.large) { file in
@@ -285,10 +302,10 @@ struct Dashboard: View {
                             }
                             Spacer()
                             Text(formattedBytes(file.bytes)).font(.caption)
-                            Button("在 Finder 查看") { reveal(file.url) }
+                            Button(preferences.text("在 Finder 查看", "Show in Finder")) { reveal(file.url) }
                         }.padding(14).background(.white).cornerRadius(12)
                     }
-                    ForEach(model.largeNotes, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+                    ForEach(Array(model.largeNotes.enumerated()), id: \.offset) { _, note in Text(preferences.text(note)).font(.caption).foregroundStyle(.secondary) }
                 }
             }
         }

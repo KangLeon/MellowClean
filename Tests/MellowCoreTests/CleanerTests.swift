@@ -26,7 +26,7 @@ final class CleanerTests: XCTestCase {
         let scan = cleaner.scan(processes: [])
         XCTAssertEqual(scan.candidates.map(\.path), [cache.path])
         let result = cleaner.clean(scan.candidates, permanently: true, processes: [])
-        XCTAssertEqual(result.count, 1, result.errors.joined(separator: "; "))
+        XCTAssertEqual(result.count, 1, result.errors.map { $0.rendered() }.joined(separator: "; "))
         XCTAssertTrue(result.errors.isEmpty)
         XCTAssertFalse(fm.fileExists(atPath: cache.path))
         XCTAssertTrue(fm.fileExists(atPath: recent.path))

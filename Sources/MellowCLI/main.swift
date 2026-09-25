@@ -2,7 +2,7 @@ import Foundation
 import MellowCore
 
 let usage = """
-MellowClean 0.1.3 — a calmer Mac, one informed choice at a time.
+MellowClean 0.2.0 — a calmer Mac, one informed choice at a time.
 
   mellowclean                  Open the native app
   mellowclean scan [--json]     Inspect known caches (read-only)
@@ -31,34 +31,36 @@ do {
         try p.run(); p.waitUntilExit()
         exit(p.terminationStatus)
     }
-    if args == ["--version"] { print("0.1.3"); exit(0) }
+    if args == ["--version"] { print("0.2.0"); exit(0) }
     if args == ["--help"] || args == ["help"] { print(usage); exit(0) }
     let cleaner = Cleaner()
     let command = args[0]
-    guard command == "scan" || command == "clean" else { throw CleanError.unsafe(usage) }
+    guard command == "scan" || command == "clean" else { throw CleanError.unsafe(.init(verbatim: usage)) }
     let allowedFlags: Set<String> = command == "scan" ? ["--json"] : ["--yes", "--permanent"]
     let flags = args.dropFirst().filter { $0.hasPrefix("-") }
-    guard flags.allSatisfy({ allowedFlags.contains($0) }) else { throw CleanError.unsafe("Unknown option.\n" + usage) }
+    guard flags.allSatisfy({ allowedFlags.contains($0) }) else { throw CleanError.unsafe(.init(verbatim: "Unknown option.\n" + usage)) }
     let ids = Set(args.dropFirst().filter { !$0.hasPrefix("-") })
-    guard command != "scan" || ids.isEmpty else { throw CleanError.unsafe(usage) }
+    guard command != "scan" || ids.isEmpty else { throw CleanError.unsafe(.init(verbatim: usage)) }
     guard ids.isSubset(of: Set(Category.all.map(\.id))), command != "clean" || !ids.isEmpty else {
-        throw CleanError.unsafe("Choose one or more valid cache IDs.\n" + usage)
+        throw CleanError.unsafe(.init(verbatim: "Choose one or more valid cache IDs.\n" + usage))
     }
     let scan = cleaner.scan(processes: try Cleaner.runningProcesses())
     if flags.contains("--json") {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        print(String(decoding: try encoder.encode(scan), as: UTF8.self)); exit(0)
+        struct Output: Encodable { let candidates: [Candidate]; let notes: [String] }
+        let output = Output(candidates: scan.candidates, notes: scan.notes.map { $0.rendered() })
+        print(String(decoding: try encoder.encode(output), as: UTF8.self)); exit(0)
     }
     let chosen = scan.candidates.filter { command == "scan" || ids.contains($0.categoryID) }
     for category in Category.all {
         let items = chosen.filter { $0.categoryID == category.id }
         if !items.isEmpty {
-            print("\(category.id): \(formattedBytes(items.reduce(0) { $0 + $1.bytes })) — \(category.title)")
-            print("  \(category.detail)")
+            print("\(category.id): \(formattedBytes(items.reduce(0) { $0 + $1.bytes })) — \(category.title.rendered())")
+            print("  \(category.detail.rendered())")
             for item in items { print("  \(formattedBytes(item.bytes))  \(item.path)") }
         }
     }
-    scan.notes.forEach { print("• " + $0) }
+    scan.notes.forEach { print("• " + $0.rendered()) }
     print("Eligible: \(formattedBytes(chosen.reduce(0) { $0 + $1.bytes })) (estimate)")
     guard command == "clean", !chosen.isEmpty else { exit(0) }
     let permanent = flags.contains("--permanent")
@@ -70,7 +72,7 @@ do {
     }
     let result = cleaner.clean(chosen, permanently: permanent, processes: try Cleaner.runningProcesses())
     print("\(permanent ? "Deleted" : "Moved to Trash"): \(result.count) items, \(formattedBytes(result.bytes)) estimated.")
-    result.errors.forEach { print("Skipped: " + $0) }
+    result.errors.forEach { print("Skipped: " + $0.rendered()) }
     if !result.errors.isEmpty { exit(1) }
 } catch {
     FileHandle.standardError.write(Data((error.localizedDescription + "\n").utf8))
